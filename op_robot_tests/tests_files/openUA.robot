@@ -20,7 +20,8 @@ ${broker}       Quinta
   [Documentation]   Створення закупівлі замовником, обовязково має повертати UAID закупівлі (номер тендера)
   [Teardown]  Оновити LAST_MODIFICATION_DATE
   ${tender_data}=  Підготовка даних для створення тендера
-  ${TENDER_UAID}=  Викликати для учасника  ${tender_owner}  Створити тендер  ${tender_data}
+  ${adapted_data}=  Адаптувати дані для оголошення тендера  ${tender_owner}  ${tender_data}
+  ${TENDER_UAID}=  Викликати для учасника  ${tender_owner}  Створити тендер  ${adapted_data}
   Set To Dictionary  ${USERS.users['${tender_owner}']}  initial_data  ${tender_data}
   Set To Dictionary  ${TENDER}   TENDER_UAID             ${TENDER_UAID}
   Log  ${TENDER}
@@ -31,8 +32,7 @@ ${broker}       Quinta
   ...      ${USERS.users['${viewer}'].broker}  ${USERS.users['${tender_owner}'].broker}
   ...      ${USERS.users['${provider}'].broker}  ${USERS.users['${provider1}'].broker}
   ...      minimal
-  ${usernames}=  Create List  ${viewer}  ${tender_owner}  ${provider}  ${provider1}
-  :FOR  ${username}  IN  @{usernames}
+  :FOR  ${username}  IN  ${viewer}  ${tender_owner}  ${provider}  ${provider1}
   \  Дочекатись синхронізації з майданчиком    ${username}
   \  Викликати для учасника  ${username}  Пошук тендера по ідентифікатору   ${TENDER['TENDER_UAID']}
 
@@ -47,8 +47,7 @@ ${broker}       Quinta
   ...      viewer
   ...      ${USERS.users['${viewer}'].broker}
   ...      minimal
-  ${usernames}=  Create List  ${viewer}  ${provider}  ${provider1}
-  :FOR  ${username}  IN  @{usernames}
+  :FOR  ${username}  IN  ${viewer}  ${provider}  ${provider1}
   \  Звірити дату тендера  ${username}  ${USERS.users['${tender_owner}'].initial_data}  tenderPeriod.startDate
 
 Відображення закінчення періоду прийому пропозицій оголошеного тендера
@@ -56,8 +55,7 @@ ${broker}       Quinta
   ...      viewer
   ...      ${USERS.users['${viewer}'].broker}
   ...      minimal
-  ${usernames}=  Create List  ${viewer}  ${provider}  ${provider1}
-  :FOR  ${username}  IN  @{usernames}
+  :FOR  ${username}  IN  ${viewer}  ${provider}  ${provider1}
   \  Звірити дату тендера  ${username}  ${USERS.users['${tender_owner}'].initial_data}  tenderPeriod.endDate
 
 Можливість подати вимогу на умови більше ніж за 10 днів до завершення періоду подання пропозицій
@@ -101,7 +99,7 @@ ${broker}       Quinta
   ...      provider
   ...      ${USERS.users['${provider}'].broker}
   [Teardown]  Оновити LAST_MODIFICATION_DATE
-  ${bid}=  test bid data
+  ${bid}=  Підготувати дані для подання пропозиції  aboveThreshold=${True}
   Log  ${bid}
   ${bidresponses}=  Create Dictionary
   Set To Dictionary  ${bidresponses}                 bid   ${bid}
@@ -115,7 +113,7 @@ ${broker}       Quinta
   ...      provider1
   ...      ${USERS.users['${provider1}'].broker}
   [Teardown]  Оновити LAST_MODIFICATION_DATE
-  ${bid}=  test bid data
+  ${bid}=  Підготувати дані для подання пропозиції  aboveThreshold=${True}
   Log  ${bid}
   ${bidresponses}=  Create Dictionary
   Set To Dictionary  ${bidresponses}                 bid   ${bid}
@@ -135,8 +133,7 @@ ${broker}       Quinta
   [Tags]   ${USERS.users['${provider}'].broker}: Можливість змінити цінову пропозицію
   ...      provider  provider1
   ...      ${USERS.users['${provider}'].broker}  ${USERS.users['${provider1}'].broker}
-  ${usernames}=  Create List  ${provider}  ${provider1}
-  :FOR  ${username}  IN  @{usernames}
+  :FOR  ${username}  IN  ${provider}  ${provider1}
   \  Дочекатись синхронізації з майданчиком    ${username}
   \  Викликати для учасника   ${username}   Пошук тендера по ідентифікатору   ${TENDER['TENDER_UAID']}
   \  ${bid}=  Викликати для учасника  ${username}  Отримати пропозицію  ${TENDER['TENDER_UAID']}
@@ -166,7 +163,7 @@ Cкасувати цінову пропозицію другого учасни�
   ...      provider1
   ...      ${USERS.users['${provider1}'].broker}
   [Teardown]  Оновити LAST_MODIFICATION_DATE
-  ${bid}=  test bid data
+  ${bid}=  Підготувати дані для подання пропозиції  aboveThreshold=${True}
   Log  ${bid}
   ${bidresponses}=  Create Dictionary
   Set To Dictionary  ${bidresponses}                 bid   ${bid}
@@ -268,8 +265,7 @@ Cкасувати цінову пропозицію другого учасни�
   [Tags]   ${USERS.users['${provider}'].broker}: Можливість змінити цінову пропозицію
   ...      provider  provider1
   ...      ${USERS.users['${provider}'].broker}  ${USERS.users['${provider1}'].broker}
-  ${usernames}=  Create List  ${provider}  ${provider1}
-  :FOR  ${username}  IN  @{usernames}
+  :FOR  ${username}  IN  ${provider}  ${provider1}
   \  Дочекатись синхронізації з майданчиком    ${username}
   \  Викликати для учасника   ${username}   Пошук тендера по ідентифікатору   ${TENDER['TENDER_UAID']}
   \  ${bid}=  Викликати для учасника  ${username}  Отримати пропозицію  ${TENDER['TENDER_UAID']}
@@ -292,7 +288,7 @@ Cкасувати цінову пропозицію другого учасни�
   ...      provider1
   ...      ${USERS.users['${provider1}'].broker}
   [Teardown]  Оновити LAST_MODIFICATION_DATE
-  ${bid}=  test bid data
+  ${bid}=  Підготувати дані для подання пропозиції  aboveThreshold=${True}
   Log  ${bid}
   ${bidresponses}=  Create Dictionary
   Set To Dictionary  ${bidresponses}                 bid   ${bid}

@@ -7,6 +7,7 @@ Library  OperatingSystem
 Library  DateTime
 Library  DebugLibrary
 
+
 Documentation
 ...  This resource file contains keywords that are used directly by
 ...  test suites or by brokers' keyword libraries (also known as drivers).
@@ -18,6 +19,7 @@ Test Suite Setup
   Set Selenium Implicit Wait  5 s
   Set Selenium Timeout  10 s
   Залогувати git-дані
+  Порівняти системний і серверний час
   Завантажуємо дані про користувачів і майданчики
 
 
@@ -30,6 +32,16 @@ Set Suite Variable With Default Value
   [Arguments]  ${suite_var}  ${def_value}
   ${tmp}=  Get Variable Value  ${${suite_var}}  ${def_value}
   Set Suite Variable  ${${suite_var}}  ${tmp}
+
+
+Порівняти системний і серверний час
+  ${server_time}=  request  ${api_host_url}  HEAD
+  ${local_time}=  Get current TZdate
+  Log  ${server_time.headers['date']}
+  Log  ${local_time}
+  ${status}=  compare_date  ${server_time.headers['date']}  ${local_time}  5
+  Run keyword if  ${status} == ${False}
+  ...      Log  Час на сервері відрізняється від локального більше ніж на 5 секунд  WARN
 
 
 Залогувати git-дані
@@ -136,10 +148,15 @@ Get Broker Property By Username
   [return]  ${tender_data}
 
 
+Підготовка даних для створення лоту
+  ${lot}=  test_lot_data
+  ${reply}=  Create Dictionary  data=${lot}
+  [Return]  ${reply}
+
+
 Підготовка даних для подання вимоги
   ${claim}=  test_claim_data
   [Return]  ${claim}
-
 
 
 Підготовка даних для подання скарги
@@ -164,6 +181,12 @@ Get Broker Property By Username
   [Return]  ${answer}
 
 
+Підготувати дані для подання пропозиції
+  [Arguments]  ${aboveThreshold}=${False}
+  ${supplier_data}=  test_bid_data  ${aboveThreshold}
+  [Return]  ${supplier_data}
+
+
 Підготувати дані про постачальника
   [Arguments]  ${username}
   ${supplier_data}=  test_supplier_data
@@ -182,9 +205,38 @@ Get Broker Property By Username
   [Return]  ${cancellation_data}
 
 
+Адаптувати дані для оголошення тендера
+  [Arguments]  ${username}  ${tender_data}
+  # munchify is used to make deep copy of ${tender_data}
+  ${tender_data_copy}=  munchify  ${tender_data}
+  ${status}  ${adapted_data}=  Run Keyword And Ignore Error  Викликати для учасника  ${username}  Підготувати дані для оголошення тендера  ${tender_data_copy}
+  ${adapted_data}=  Set variable if  '${status}' == 'FAIL'  ${tender_data_copy}  ${adapted_data}
+  # munchify is used to make nice log output
+  ${adapted_data}=  munchify  ${adapted_data}
+  Log  ${tender_data}
+  Log  ${adapted_data}
+  ${status}=  Run keyword and return status  Dictionaries Should Be Equal  ${adapted_data.data}  ${tender_data.data}
+  Run keyword if  ${status} == ${False}  Log  Initial tender data was changed  WARN
+  [Return]  ${adapted_data}
+
+
 Завантажуємо бібліотеку з реалізацією для майданчика ${keywords_file}
+  [Documentation]
+  ...      Load broker's driver (keyword library).
+  ...
+  ...      `Import Resource` is called twice:
+  ...
+  ...      1) It tries to read from  ``brokers/`` directory
+  ...      (located next to ``keywords.robot``).
+  ...      This is an old feature which will be removed in the future.
+  ...
+  ...      2) It looks for a given filename in ``sys.path``
+  ...      (``PYTHONPATH`` environment variable).
+  ...
+  ...      This keyword will fail if ``keywords_file`` was found
+  ...      in both locations.
   ${bundled_st}=  Run Keyword And Return Status  Import Resource  ${CURDIR}${/}brokers${/}${keywords_file}.robot
-  ${external_st}=  Run Keyword And Return Status  Import Resource  ${CURDIR}${/}..${/}..${/}src${/}robot_tests.broker.${keywords_file}${/}${keywords_file}.robot
+  ${external_st}=  Run Keyword And Return Status  Import Resource  ${keywords_file}.robot
   Run Keyword If  ${bundled_st} == ${external_st} == ${False}  Fail  Resource file ${keywords_file}.robot not found
   Run Keyword If  ${bundled_st} == ${external_st} == ${True}  Fail  Resource file ${keywords_file}.robot found in both brokers${/} and src${/}
 
@@ -259,12 +311,9 @@ Get Broker Property By Username
 
 
 Звірити поле тендера із значенням
-  [Arguments]  ${username}  ${left}  ${field}
-  ${right}=  Викликати для учасника  ${username}  Отримати інформацію із тендера  ${field}
-  Log  ${left}
-  Log  ${right}
+  [Arguments]  ${username}  ${left}  ${field}  ${object_id}=${None}
+  ${right}=  Отримати дані із тендера  ${username}  ${field}  ${object_id}
   Порівняти об'єкти  ${left}  ${right}
-  Set_To_Object  ${USERS.users['${username}'].tender_data.data}  ${field}  ${left}
 
 
 Порівняти об'єкти
@@ -283,10 +332,9 @@ Get Broker Property By Username
 
 
 Звірити дату тендера із значенням
-  [Arguments]  ${username}  ${left}  ${field}
-  ${right}=  Викликати для учасника  ${username}  Отримати інформацію із тендера  ${field}
+  [Arguments]  ${username}  ${left}  ${field}  ${object_id}=${None}
+  ${right}=  Отримати дані із тендера  ${username}  ${field}  ${object_id}
   Порівняти дати  ${left}  ${right}
-  Set_To_Object  ${USERS.users['${username}'].tender_data.data}  ${field}  ${left}
 
 
 Порівняти дати
@@ -324,6 +372,44 @@ Get Broker Property By Username
   \  Звірити дату тендера  ${viewer}  ${tender_data}  items[${index}].${field}
 
 
+Отримати дані із тендера
+  [Arguments]  ${username}  ${field_name}  ${object_id}=${None}
+  Log  ${username}
+  Log  ${field_name}
+  ${field}=  Run Keyword If  '${object_id}'=='${None}'  Set Variable  ${field_name}
+  ...             ELSE  Отримати шлях до поля об’єкта  ${username}  ${field_name}  ${object_id}
+  ${status}  ${field_value}=  Run keyword and ignore error
+  ...      Get from object
+  ...      ${USERS.users['${username}'].tender_data.data}
+  ...      ${field}
+  # If field in cache, return its value
+  Run Keyword if  '${status}' == 'PASS'  Return from keyword   ${field_value}
+  # Else call broker to find field
+  ${field_value}=  Run Keyword IF  '${object_id}'=='${None}'  Run As  ${username}  Отримати інформацію із тендера  ${field}
+  ...                          ELSE  Отримати дані із об’єкта тендера  ${username}  ${object_id}  ${field_name}
+  # And caching its value before return
+  Set_To_Object  ${USERS.users['${username}'].tender_data.data}  ${field}  ${field_value}
+  [return]  ${field_value}
+
+
+Отримати шлях до поля об’єкта
+  [Arguments]  ${username}  ${field_name}  ${object_id}
+  ${object_type}=  get_object_type_by_id  ${object_id}
+  ${objects}=  Get Variable Value  ${USERS.users['${username}'].tender_data.data['${object_type}']}  ${empty}
+  ${object_index}=  get_object_index_by_id  ${objects}  ${object_id}
+  [return]  ${object_type}[${object_index}].${field_name}
+
+
+Отримати дані із об’єкта тендера
+  [Arguments]  ${username}  ${object_id}  ${field_name}
+  ${object_type}=   get_object_type_by_id  ${object_id}
+  ${status}  ${value}=  Run Keyword And Ignore Error  Run As  ${username}  Отримати інформацію із запитання  ${object_id}  ${field_name}
+  ${field}=  Отримати шлях до поля об’єкта  ${username}  ${field_name}  ${object_id}
+  ${field_value}=  Run Keyword IF  '${status}'=='PASS'  Set Variable  ${value}
+  ...                          ELSE  Run As  ${username}  Отримати інформацію із тендера  ${field}
+  [return]  ${field_value}
+
+
 Викликати для учасника
   [Arguments]  ${username}  ${command}  @{arguments}
   Run keyword unless  '${WARN_RUN_AS}' == '${True}'
@@ -347,7 +433,12 @@ Run As
   Log  ${command}
   Log Many  @{arguments}
   ${keywords_file}=  Get Broker Property By Username  ${username}  keywords_file
-  Run Keyword And Return  ${keywords_file}.${command}  ${username}  @{arguments}
+  ${status}  ${value}=  Run keyword and ignore keyword definitions  ${keywords_file}.${command}  ${username}  @{arguments}
+  ${unexpected_args}=  Get Regexp Matches  '${value}'  expected [0-9] arguments, got [0-9]
+  ${status}  ${value}=  Run Keyword If  "${unexpected_args}"=="[]"  Set Variable  ${status}  ${value}
+  ...      ELSE  Run keyword and ignore keyword definitions  ${keywords_file}.${command}  ${username}  @{arguments[:-1]}
+  Run Keyword If  '${status}' == 'FAIL'  Fail  ${value}
+  [return]  ${value}
 
 
 Require Failure
